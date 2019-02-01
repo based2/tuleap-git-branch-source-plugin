@@ -3,6 +3,7 @@ package org.jenkinsci.plugins.tuleap_git_branch_source.config;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.UnknownHostException;
 
 
 import hudson.Util;
@@ -11,6 +12,7 @@ import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.tuleap_git_branch_source.Messages;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientCommandConfigurer;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientRawCmd;
+import org.jenkinsci.plugins.tuleap_git_branch_source.resteasyclient.TuleapRestEasyClient;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
@@ -30,6 +32,8 @@ import hudson.Extension;
 import hudson.util.FormValidation;
 import jenkins.model.GlobalConfiguration;
 import net.sf.json.JSONObject;
+
+import javax.ws.rs.ProcessingException;
 
 @Extension
 public class TuleapConfiguration extends GlobalConfiguration {
@@ -92,38 +96,37 @@ public class TuleapConfiguration extends GlobalConfiguration {
             return validation;
         }
         setDomainUrl(domainUrl);
+        TuleapRestEasyClient tuleapClient = new TuleapRestEasyClient(domainUrl);
         try {
-            boolean serverUrlIsValid = TuleapClientCommandConfigurer.<Boolean>newInstance(getApiBaseUrl())
-                .withCommand(new TuleapClientRawCmd.IsTuleapServerUrlValid())
-                .configure()
-                .call();
-
-            if (serverUrlIsValid) {
+            boolean isServerValid = tuleapClient.isServerUrlValid();
+            tuleapClient.close();
+            if (isServerValid) {
                 return FormValidation.ok("Connexion established with these Urls");
             } else {
                 return FormValidation.error("Failed to validate the account");
             }
-        } catch (IOException e) {
-            return FormValidation.error(e, "Failed to validate url");
+        } catch (ProcessingException e) {
+            tuleapClient.close();
+            return FormValidation.error("Unknow host");
         }
     }
 
-    @SuppressWarnings("unused")
-    public FormValidation checkDomainUrl(@QueryParameter String domainUrl) {
-        return validateUrls(domainUrl);
-    }
-
-    private FormValidation validateUrls(final String url) {
-        try {
-            new URL(url);
-        } catch (MalformedURLException e) {
-            return FormValidation.error("Malformed url (%s)", e.getMessage());
+        @SuppressWarnings("unused")
+        public FormValidation checkDomainUrl (@QueryParameter String domainUrl){
+            return validateUrls(domainUrl);
         }
 
-        if (Util.fixEmptyAndTrim(url) == null) {
-            return FormValidation.error("Url is required and should be valid");
-        }
+        private FormValidation validateUrls ( final String url){
+            try {
+                new URL(url);
+            } catch (MalformedURLException e) {
+                return FormValidation.error("Malformed url (%s)", e.getMessage());
+            }
 
-        return FormValidation.ok();
+            if (Util.fixEmptyAndTrim(url) == null) {
+                return FormValidation.error("Url is required and should be valid");
+            }
+
+            return FormValidation.ok();
+        }
     }
-}

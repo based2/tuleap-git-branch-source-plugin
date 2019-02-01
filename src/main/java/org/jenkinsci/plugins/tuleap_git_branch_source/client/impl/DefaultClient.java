@@ -99,37 +99,6 @@ class DefaultClient implements TuleapClient {
     /**
      * {@inheritDoc}
      */
-    @Override
-    public boolean isServerUrlValid() throws IOException {
-        isApiUrlPresent("Checking url");
-        String apiExplorerUrl = apiBaseUrl + TULEAP_API_EXPLORER_PATH ;
-        Request req = new Request.Builder()
-            .url(apiExplorerUrl)
-            .addHeader("content-type", "application/json")
-            .cacheControl(CacheControl.FORCE_NETWORK)
-            .get()
-            .build();
-        try (Response response = client.newCall(req).execute()) {
-            if (!response.isSuccessful())
-                throw new IOException(
-                    "HTTP call error at url: " + req.url().toString() + " " + "with code: " + response.code());
-
-            ResponseBody body = response.body();
-            if (body != null) {
-//                TuleapApi api = parse(body.string(), TuleapApi.class);
-                //API has changed no version number provided anymore :(
-                //return "1".equals(api.getApiVersion());
-                return true;
-            }
-            return false;
-        } catch (IOException e) {
-            throw new IOException("Retrieve current api encounter error", e);
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     public final Stream<TuleapProject> allUserProjects(boolean isMemberOf) throws IOException, NumberFormatException {
         isApiUrlPresent("Fetching all users's projects");
         LOGGER.info("Fetching all user's projects");
