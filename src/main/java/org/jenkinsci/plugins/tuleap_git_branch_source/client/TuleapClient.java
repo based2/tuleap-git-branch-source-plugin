@@ -32,12 +32,6 @@ public interface TuleapClient {
     String DEFAULT_TULEAP_API_PATH = "/api";
 
     /**
-     * The api explorer path according to api v1
-     */
-    //API has changed no resources.json anymore :(
-    String TULEAP_API_EXPLORER_PATH = "/explorer/swagger.json";
-
-    /**
      * The projects api path according to api v1
      */
     String TULEAP_API_PROJECT_PATH = "/projects";
@@ -79,14 +73,6 @@ public interface TuleapClient {
      * status
      */
     boolean isCredentialValid() throws IOException;
-
-    /**
-     * A means to tell we did a successful http call to a Tuleap server
-     * From Tuleap docs : Note that when accessing this route without authentication certain properties will not be
-     * returned in the response.
-     * @return true(false) if http call is (un)successful and (does not )contains appropriate user data
-     */
-    boolean isServerUrlValid() throws IOException ;
 
     /**
      * Return projects current user has access. Using param object ?query={"is_member_of": true} of Tuleap api

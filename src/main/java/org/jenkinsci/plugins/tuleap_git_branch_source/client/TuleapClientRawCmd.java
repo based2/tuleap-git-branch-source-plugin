@@ -61,14 +61,6 @@ public class TuleapClientRawCmd {
         }
     }
 
-    public static class IsTuleapServerUrlValid extends TuleapClientRawCmd implements Command<Boolean> {
-
-        @Override
-        public Boolean call() throws IOException {
-            return client.isServerUrlValid();
-        }
-    }
-
     public static class IsCredentialsValid extends TuleapClientRawCmd implements Command<Boolean> {
 
         @Override

@@ -75,7 +75,7 @@ public class TuleapConnector {
                 Boolean credentialsAreValid = TuleapClientCommandConfigurer.<Boolean>newInstance(
                     defaultIfEmpty(apiUri, TuleapConfiguration.get().getApiBaseUrl()))
                     .withCredentials(cred)
-                    .withCommand(new TuleapClientRawCmd.IsTuleapServerUrlValid())
+                    .withCommand(new TuleapClientRawCmd.IsCredentialsValid())
                     .configure()
                     .call();
 
