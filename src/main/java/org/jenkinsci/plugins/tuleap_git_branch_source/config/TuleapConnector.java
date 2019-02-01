@@ -5,8 +5,10 @@ import java.util.Collections;
 import java.util.List;
 
 
+import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientCommandConfigurer;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientRawCmd;
+import org.jenkinsci.plugins.tuleap_git_branch_source.resteasyclient.TuleapRestEasyClient;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -49,9 +51,10 @@ public class TuleapConnector {
         if (includeEmpty) {
             model.includeEmptyValue();
         }
+
         return model.includeMatchingAs(
             context instanceof Queue.Task ? Tasks.getDefaultAuthenticationOf((Queue.Task) context) : ACL.SYSTEM,
-            context, StandardUsernameCredentials.class, OFDomainRequirements(apiUri), allUsernamePasswordMatch());
+            context, StandardCredentials.class, OFDomainRequirements(apiUri), allUsernamePasswordMatch());
     }
 
     public static FormValidation checkCredentials(@AncestorInPath Item item, String apiUri, String credentialsId) {
@@ -67,26 +70,39 @@ public class TuleapConnector {
         if (Util.fixEmpty(credentialsId) == null) {
             return FormValidation.error("Username Password credential is required");
         } else {
+
             StandardUsernamePasswordCredentials cred = CredentialsMatchers.firstOrNull(
                 filter(lookupCredentials(StandardUsernamePasswordCredentials.class, Jenkins.getInstance(), ACL.SYSTEM,
-                    Collections.<DomainRequirement> emptyList()), withId(trimToEmpty(credentialsId))),
+                    Collections.<DomainRequirement>emptyList()), withId(trimToEmpty(credentialsId))),
                 CredentialsMatchers.allOf(withId(credentialsId), allUsernamePasswordMatch()));
-            try {
-                Boolean credentialsAreValid = TuleapClientCommandConfigurer.<Boolean>newInstance(
-                    defaultIfEmpty(apiUri, TuleapConfiguration.get().getApiBaseUrl()))
-                    .withCredentials(cred)
-                    .withCommand(new TuleapClientRawCmd.IsCredentialsValid())
-                    .configure()
-                    .call();
 
-                if (credentialsAreValid) {
-                    return FormValidation.ok();
-                } else {
-                    return FormValidation.error("Failed to validate the provided credentials");
+            StringCredentials accessTokenId = CredentialsMatchers.firstOrNull(
+                filter(lookupCredentials(StringCredentials.class, Jenkins.get(), ACL.SYSTEM,
+                    Collections.<DomainRequirement>emptyList()), withId(trimToEmpty(credentialsId))),
+                CredentialsMatchers.withId(credentialsId));
+
+            if (cred != null) {
+                try {
+                    Boolean credentialsAreValid = TuleapClientCommandConfigurer.<Boolean>newInstance(
+                        defaultIfEmpty(apiUri, TuleapConfiguration.get().getApiBaseUrl()))
+                        .withCredentials(cred)
+                        .withCommand(new TuleapClientRawCmd.IsCredentialsValid())
+                        .configure()
+                        .call();
+
+                    if (credentialsAreValid) {
+                        return FormValidation.ok("Basic auth used");
+                    } else {
+                        return FormValidation.error("Failed to validate the provided credentials");
+                    }
+                } catch (IOException e) {
+                    return FormValidation.error(e, "Failed to validate the provided credentials");
                 }
-            } catch (IOException e) {
-                return FormValidation.error(e, "Failed to validate the provided credentials");
             }
+            if (accessTokenId != null) {
+                return FormValidation.ok("Access token used");
+            }
+            return FormValidation.error("Bad credentials");
         }
     }
 
@@ -107,11 +123,29 @@ public class TuleapConnector {
         }
     }
 
+    @CheckForNull
+    public static StringCredentials lookupScanStringCredentials(@CheckForNull Item context, @CheckForNull String apiUri,
+                                                                @CheckForNull String scanCredentialsId) {
+        if (Util.fixEmpty(scanCredentialsId) == null) {
+            return null;
+        } else {
+            return CredentialsMatchers
+                .firstOrNull(
+                    CredentialsProvider.lookupCredentials(StringCredentials.class, context,
+                        context instanceof Queue.Task ? Tasks.getDefaultAuthenticationOf((Queue.Task) context)
+                            : ACL.SYSTEM,
+                        OFDomainRequirements(apiUri)),
+                    CredentialsMatchers.allOf(withId(scanCredentialsId),
+                        allUsernamePasswordMatch()));
+        }
+    }
     private static List<DomainRequirement> OFDomainRequirements(@CheckForNull String apiUri) {
-        return URIRequirementBuilder.fromUri(defaultIfEmpty(apiUri, TuleapConfiguration.get().getApiBaseUrl())).build();
+        return URIRequirementBuilder.fromUri(defaultIfEmpty(apiUri, TuleapConfiguration.get().getDomainUrl())).build();
     }
 
     public static CredentialsMatcher allUsernamePasswordMatch() {
-        return CredentialsMatchers.anyOf(CredentialsMatchers.instanceOf(StandardUsernamePasswordCredentials.class));
+        return CredentialsMatchers.anyOf(
+            CredentialsMatchers.instanceOf(StandardUsernamePasswordCredentials.class),
+            CredentialsMatchers.instanceOf(StringCredentials.class));
     }
 }

@@ -1,6 +1,7 @@
 package org.jenkinsci.plugins.tuleap_git_branch_source;
 
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
+import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
@@ -25,12 +26,14 @@ import net.jcip.annotations.GuardedBy;
 import org.jenkins.ui.icon.Icon;
 import org.jenkins.ui.icon.IconSet;
 import org.jenkinsci.Symbol;
+import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientCommandConfigurer;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientRawCmd;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.api.TuleapGitRepository;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.api.TuleapProject;
 import org.jenkinsci.plugins.tuleap_git_branch_source.config.TuleapConfiguration;
 import org.jenkinsci.plugins.tuleap_git_branch_source.config.TuleapConnector;
+import org.jenkinsci.plugins.tuleap_git_branch_source.resteasyclient.TuleapRestEasyClient;
 import org.jenkinsci.plugins.tuleap_git_branch_source.trait.UserForkRepositoryTrait;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
@@ -411,7 +414,16 @@ public class TuleapSCMNavigator extends SCMNavigator {
             @QueryParameter String credentialsId) throws IOException {
             String apiUri = TuleapConfiguration.get().getApiBaseUrl();
             final StandardCredentials credentials = lookupScanCredentials(context, apiUri, credentialsId);
+            final StringCredentials stringCredentials = lookupScanStringCredentials(context, apiUri, credentialsId);
             ListBoxModel result = new ListBoxModel();
+
+            if(stringCredentials != null) {
+                TuleapRestEasyClient client = new TuleapRestEasyClient(TuleapConfiguration.get().getDomainUrl());
+                List<TuleapProject> projects = client.getProjects(stringCredentials.getSecret());
+                projects.forEach(project -> result.add(project.getShortname(), String.valueOf(project.getId())));
+                return result;
+            }
+
             try {
                 TuleapClientCommandConfigurer.<Stream<TuleapProject>>newInstance(apiUri)
                     .withCredentials(credentials)
