@@ -1,6 +1,5 @@
 package org.jenkinsci.plugins.tuleap_git_branch_source;
 
-import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.TaskListener;
@@ -12,6 +11,7 @@ import org.jenkinsci.plugins.tuleap_git_branch_source.client.api.TuleapGitBranch
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -35,6 +35,8 @@ public class TuleapSCMSourceRequest extends SCMSourceRequest {
     private Stream<TuleapGitBranch> branches;
 
     private Stream<TuleapBranches> branchesFromTuleapApi;
+
+    private List<TuleapBranches> branchesFromNewTuleapApi;
 
     protected TuleapSCMSourceRequest(@NonNull SCMSource source, @NonNull TuleapSCMSourceContext context,
                                      @CheckForNull TaskListener listener) {
@@ -71,7 +73,15 @@ public class TuleapSCMSourceRequest extends SCMSourceRequest {
         return branchesFromTuleapApi;
     }
 
+    public List<TuleapBranches> getBranchesFromNewTuleapApi() {
+        return this.branchesFromNewTuleapApi;
+    }
+
     public void setBranchesFromTuleapApi(Stream<TuleapBranches> branches){
         this.branchesFromTuleapApi = branches;
+    }
+
+    public void setBranchesFromNewTuleapApi(List<TuleapBranches> branches) {
+        this.branchesFromNewTuleapApi = branches;
     }
 }

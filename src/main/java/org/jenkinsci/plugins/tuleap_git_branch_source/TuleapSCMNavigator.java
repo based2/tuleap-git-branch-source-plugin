@@ -1,7 +1,6 @@
 package org.jenkinsci.plugins.tuleap_git_branch_source;
 
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
-import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
@@ -62,6 +61,7 @@ public class TuleapSCMNavigator extends SCMNavigator {
     private String apiUri, gitBaseUri;
     private Map<String, TuleapGitRepository> repositories = new HashMap<>();
     private TuleapProject project;
+    private String tokenApiCredentialsId;
 
     @DataBoundConstructor
     public TuleapSCMNavigator(String projectId) {
@@ -81,52 +81,107 @@ public class TuleapSCMNavigator extends SCMNavigator {
         listener.getLogger().printf("Visit Sources of %s...%n", getprojectId());
         StandardCredentials credentials = TuleapConnector.lookupScanCredentials((Item) observer.getContext(),
             getApiUri(), credentialsId);
+        final StringCredentials stringCredentials = lookupScanStringCredentials((Item) observer.getContext(), getApiUri(), this.tokenApiCredentialsId);
 
         try (final TuleapSCMNavigatorRequest request = new TuleapSCMNavigatorContext()
                 .withTraits(traits).newRequest(this, observer)) {
             WitnessImpl witness = new WitnessImpl(listener, this);
-            Optional<TuleapProject> project = TuleapClientCommandConfigurer.<Optional<TuleapProject>>newInstance(getApiUri())
-                .withCredentials(credentials)
-                .withCommand(new TuleapClientRawCmd.ProjectById(projectId))
-                .configure()
-                .call();
-            if (project.isPresent()) {
-                this.project = project.get();
+            if (stringCredentials != null) {
+                this.visitSourcesUsingNewAPI(stringCredentials, listener, request, witness);
             } else {
-                //Should never happen though
-                listener.getLogger().format("No project match projectId "+ projectId +"... it's weird%n");
-                return;
+                listener.getLogger().println("... Using deprecated way, please use the access token instead.");
+                this.visitSourcesUsingOldAPI(credentials, listener, request, witness);
             }
-            Stream<TuleapGitRepository> repos = TuleapClientCommandConfigurer.<Stream<TuleapGitRepository>> newInstance
-                (getApiUri())
-				.withCredentials(credentials)
-                .withCommand(new TuleapClientRawCmd.AllRepositoriesByProject(projectId))
-                .configure()
-                .call();
-
-            for (TuleapGitRepository repo : repos.collect(Collectors.toList())) {
-                repositories.put(repo.getName(), repo);
-                SourceFactory sourceFactory = new SourceFactory(request, this.project, repo);
-                if (request.process(repo.getName(), sourceFactory, null, witness)) {
-                    listener.getLogger().format("%d repositories were processed (query completed)%n",
-                        witness.getCount());
-                }
-            }
-            listener.getLogger().format("%d repositories were processed%n", witness.getCount());
         }
+    }
+
+    private void visitSourcesUsingNewAPI(StringCredentials stringCredentials, TaskListener listener, TuleapSCMNavigatorRequest request, WitnessImpl witness) throws IOException, InterruptedException {
+        TuleapRestEasyClient client = new TuleapRestEasyClient(TuleapConfiguration.get().getDomainUrl());
+        TuleapProject project = client.getProjectById(stringCredentials.getSecret(), Integer.parseInt(this.projectId));
+
+        if (project == null) {
+            //Should never happen though
+            listener.getLogger().format("No project match projectId " + projectId + "... it's weird%n");
+            return;
+        }
+        this.project = project;
+        List<TuleapGitRepository> tuleapGitRepositories = client.getRepositoriesOfAProject(stringCredentials.getSecret(), Integer.parseInt(this.projectId));
+        client.close();
+        for (TuleapGitRepository repository : tuleapGitRepositories) {
+            this.repositories.put(repository.getName(), repository);
+            SourceFactory sourceFactory = new SourceFactory(request, this.project, repository);
+            if (request.process(repository.getName(), sourceFactory, null, witness)) {
+                listener.getLogger().format("%d repositories were processed (query completed)%n",
+                    witness.getCount());
+            }
+        }
+    }
+
+    private void visitSourcesUsingOldAPI(StandardCredentials credentials, TaskListener listener, TuleapSCMNavigatorRequest request, WitnessImpl witness) throws IOException, InterruptedException {
+        Optional<TuleapProject> project = TuleapClientCommandConfigurer.<Optional<TuleapProject>>newInstance(getApiUri())
+            .withCredentials(credentials)
+            .withCommand(new TuleapClientRawCmd.ProjectById(projectId))
+            .configure()
+            .call();
+        if (project.isPresent()) {
+            this.project = project.get();
+        } else {
+            //Should never happen though
+            listener.getLogger().format("No project match projectId " + projectId + "... it's weird%n");
+            return;
+        }
+        Stream<TuleapGitRepository> repos = TuleapClientCommandConfigurer.<Stream<TuleapGitRepository>>newInstance
+            (getApiUri())
+            .withCredentials(credentials)
+            .withCommand(new TuleapClientRawCmd.AllRepositoriesByProject(projectId))
+            .configure()
+            .call();
+
+        for (TuleapGitRepository repo : repos.collect(Collectors.toList())) {
+            repositories.put(repo.getName(), repo);
+            SourceFactory sourceFactory = new SourceFactory(request, this.project, repo);
+            if (request.process(repo.getName(), sourceFactory, null, witness)) {
+                listener.getLogger().format("%d repositories were processed (query completed)%n",
+                    witness.getCount());
+            }
+        }
+        listener.getLogger().format("%d repositories were processed%n", witness.getCount());
     }
 
     @NonNull
     @Override
     protected List<Action> retrieveActions(@NonNull SCMNavigatorOwner owner, @CheckForNull SCMNavigatorEvent event,
-        @NonNull TaskListener listener) throws IOException, InterruptedException {
+                                           @NonNull TaskListener listener) throws IOException, InterruptedException {
         listener.getLogger().printf("Looking up details of %s...%n", getprojectId());
-        List<Action> actions = new ArrayList<>();
 
-        final StandardCredentials credentials = lookupScanCredentials((Item) owner, getApiUri(), credentialsId);
+        final StandardCredentials credentials = lookupScanCredentials((Item) owner, getApiUri(), this.credentialsId);
+        final StringCredentials stringCredentials = lookupScanStringCredentials((Item) owner, getApiUri(), this.tokenApiCredentialsId);
+
+        if (stringCredentials != null) {
+            return this.retrieveActions(stringCredentials);
+        }
+        listener.getLogger().println("... Using deprecated way, please use the access token instead.");
+        return this.retrieveActionsBasicAuth(credentials);
+    }
+
+    private List<Action> retrieveActions(StringCredentials stringCredentials) {
+        TuleapRestEasyClient client = new TuleapRestEasyClient(TuleapConfiguration.get().getDomainUrl());
+        TuleapProject project = client.getProjectById(stringCredentials.getSecret(), Integer.parseInt(this.projectId));
+
+        List<Action> actions = new ArrayList<>();
+        if (project != null) {
+            actions.add(new TuleapProjectMetadataAction(project));
+            actions.add(new TuleapLink("icon-tuleap-logo", TuleapConfiguration.get().getDomainUrl() + "/projects/" +
+                project.getShortname()));
+        }
+        return actions;
+    }
+
+    private List<Action> retrieveActionsBasicAuth(StandardCredentials credentials) throws IOException {
+        List<Action> actions = new ArrayList<>();
         Optional<TuleapProject> project = TuleapClientCommandConfigurer
-            .<Optional<TuleapProject>> newInstance(getApiUri())
-			.withCredentials(credentials)
+            .<Optional<TuleapProject>>newInstance(getApiUri())
+            .withCredentials(credentials)
             .withCommand(new TuleapClientRawCmd.ProjectById(projectId))
             .configure()
             .call();
@@ -137,7 +192,6 @@ public class TuleapSCMNavigator extends SCMNavigator {
         }
         return actions;
     }
-
     public List<SCMTrait<? extends SCMTrait>> getTraits() {
         return Collections.unmodifiableList(traits);
     }
@@ -220,6 +274,15 @@ public class TuleapSCMNavigator extends SCMNavigator {
     @DataBoundSetter
     public void setProjectId(final String projectId) {
         this.projectId = projectId;
+    }
+
+    public String getTokenApiCredentialsId() {
+        return this.tokenApiCredentialsId;
+    }
+
+    @DataBoundSetter
+    public void setTokenApiCredentialsId(String tokenApiCredentialsId) {
+        this.tokenApiCredentialsId = tokenApiCredentialsId;
     }
 
     public Map<String, TuleapGitRepository> getRepositories() {
@@ -355,6 +418,14 @@ public class TuleapSCMNavigator extends SCMNavigator {
             return checkCredentials(context, apiUri ,credentialsId);
         }
 
+        @RequirePOST
+        @Restricted(NoExternalUse.class) // stapler
+        public FormValidation doChecktokenApiCredentialsId(@CheckForNull @AncestorInPath Item context,
+                                                           @QueryParameter String apiUri, @QueryParameter String tokenApiCredentialsId) {
+
+            return checkCredentials(context, apiUri, tokenApiCredentialsId);
+        }
+
         @Restricted(NoExternalUse.class) // stapler
         public FormValidation doCheckProjectId(@Nonnull @AncestorInPath Item context,
             @QueryParameter String projectId, @QueryParameter String includes, @QueryParameter String excludes) {
@@ -388,6 +459,13 @@ public class TuleapSCMNavigator extends SCMNavigator {
             return listScanCredentials(context, apiUri, credentialsId, true);
         }
 
+        @Restricted(NoExternalUse.class) // stapler
+        public ListBoxModel doFillTokenApiCredentialsIdItems(@CheckForNull @AncestorInPath Item context,
+                                                             @QueryParameter String apiUri, @QueryParameter String tokenApiCredentialsId) {
+            return listScanTokenCredentials(context, apiUri, tokenApiCredentialsId, true);
+        }
+
+
         @SuppressWarnings("unused") // jelly
         public List<SCMTrait<? extends SCMTrait<?>>> getTraitsDefaults() {
             List<SCMTrait<? extends SCMTrait<?>>> result = new ArrayList<>();
@@ -411,20 +489,22 @@ public class TuleapSCMNavigator extends SCMNavigator {
         @Restricted(NoExternalUse.class) // stapler
         @SuppressWarnings("unused") // stapler
         public ListBoxModel doFillProjectIdItems(@CheckForNull @AncestorInPath Item context,
-            @QueryParameter String credentialsId) throws IOException {
+                                                 @QueryParameter String credentialsId, @QueryParameter String tokenApiCredentialsId) throws IOException {
             String apiUri = TuleapConfiguration.get().getApiBaseUrl();
-            final StandardCredentials credentials = lookupScanCredentials(context, apiUri, credentialsId);
-            final StringCredentials stringCredentials = lookupScanStringCredentials(context, apiUri, credentialsId);
+            final StringCredentials stringCredentials = lookupScanStringCredentials(context, apiUri, tokenApiCredentialsId);
             ListBoxModel result = new ListBoxModel();
 
             if(stringCredentials != null) {
                 TuleapRestEasyClient client = new TuleapRestEasyClient(TuleapConfiguration.get().getDomainUrl());
                 List<TuleapProject> projects = client.getProjects(stringCredentials.getSecret());
+                client.close();
                 projects.forEach(project -> result.add(project.getShortname(), String.valueOf(project.getId())));
                 return result;
             }
+            final StandardCredentials credentials = lookupScanCredentials(context, apiUri, credentialsId);
 
             try {
+                LOGGER.info("Using the deprecated method to retrieve projects ...");
                 TuleapClientCommandConfigurer.<Stream<TuleapProject>>newInstance(apiUri)
                     .withCredentials(credentials)
                     .withCommand(new TuleapClientRawCmd.AllUserProjects(true))
@@ -537,7 +617,7 @@ public class TuleapSCMNavigator extends SCMNavigator {
         @NonNull
         @Override
         public SCMSource create(@NonNull String repositoryName) throws IOException, InterruptedException {
-            return new TuleapSCMSourceBuilder(getId() + repositoryName, credentialsId, project, repo)
+            return new TuleapSCMSourceBuilder(getId() + repositoryName, credentialsId, project, repo, tokenApiCredentialsId)
                 .withRequest(request).build();
         }
     }

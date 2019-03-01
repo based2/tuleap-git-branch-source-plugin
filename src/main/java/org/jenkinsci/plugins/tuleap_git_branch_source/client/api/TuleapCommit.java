@@ -6,6 +6,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 public class TuleapCommit {
     private String id;
 
+    public TuleapCommit() {
+
+    }
+
+    public TuleapCommit(String id) {
+        this.id = id;
+    }
     public String getId() {
         return id;
     }

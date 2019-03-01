@@ -7,6 +7,14 @@ public class TuleapBranches {
     private String name;
     private TuleapCommit commit;
 
+    public TuleapBranches() {
+    }
+
+    public TuleapBranches(String name, TuleapCommit commit) {
+        this.name = name;
+        this.commit = commit;
+    }
+
     public String getName() {
         return name;
     }

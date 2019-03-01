@@ -8,7 +8,6 @@ import java.util.List;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientCommandConfigurer;
 import org.jenkinsci.plugins.tuleap_git_branch_source.client.TuleapClientRawCmd;
-import org.jenkinsci.plugins.tuleap_git_branch_source.resteasyclient.TuleapRestEasyClient;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.QueryParameter;
 
@@ -55,6 +54,23 @@ public class TuleapConnector {
         return model.includeMatchingAs(
             context instanceof Queue.Task ? Tasks.getDefaultAuthenticationOf((Queue.Task) context) : ACL.SYSTEM,
             context, StandardCredentials.class, OFDomainRequirements(apiUri), allUsernamePasswordMatch());
+    }
+
+    public static ListBoxModel listScanTokenCredentials(@CheckForNull @AncestorInPath Item context,
+                                                        @QueryParameter String apiUri, @QueryParameter String tokenCredentialsId, boolean includeEmpty) {
+        if (context == null ?
+            !Jenkins.getActiveInstance().hasPermission(Jenkins.ADMINISTER) :
+            !context.hasPermission(Item.EXTENDED_READ)) {
+            return new StandardListBoxModel().includeCurrentValue(tokenCredentialsId);
+        }
+        final StandardListBoxModel model = new StandardListBoxModel();
+        if (includeEmpty) {
+            model.includeEmptyValue();
+        }
+
+        return model.includeMatchingAs(
+            context instanceof Queue.Task ? Tasks.getDefaultAuthenticationOf((Queue.Task) context) : ACL.SYSTEM,
+            context, StringCredentials.class, OFDomainRequirements(apiUri), allUsernamePasswordMatch());
     }
 
     public static FormValidation checkCredentials(@AncestorInPath Item item, String apiUri, String credentialsId) {

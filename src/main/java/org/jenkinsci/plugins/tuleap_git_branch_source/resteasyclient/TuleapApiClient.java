@@ -25,6 +25,22 @@ public interface TuleapApiClient {
 
     @GET
     @Path("/projects")
-    public List<TuleapProject> getProjects(@HeaderParam(ACCESS_KEY_HEADER) String accessKey, @QueryParam("is_member_of") String isMember, @QueryParam("limit") int limit);
+    public Response getProjects(@HeaderParam(ACCESS_KEY_HEADER) String accessKey, @QueryParam("is_member_of") String isMember, @QueryParam("limit") int limit, @QueryParam("offset") int offset);
+
+    @GET
+    @Path("/projects/{id}")
+    public TuleapProject getProjectById(@HeaderParam(ACCESS_KEY_HEADER) String accesKey, @PathParam("id") int id);
+
+    @GET
+    @Path("/projects/{id}/git")
+    public Response getRepositoriesOfAProject(@HeaderParam(ACCESS_KEY_HEADER) String accessKey, @PathParam("id") int id);
+
+    @GET
+    @Path("/git/{id}/branches")
+    public Response getBranches(@HeaderParam(ACCESS_KEY_HEADER) String accessKey, @PathParam("id") int id, @QueryParam("limit") int limit, @QueryParam("offset") int offset);
+
+    @GET
+    @Path("/git/{id}/files")
+    public Response getFiles(@HeaderParam(ACCESS_KEY_HEADER) String accessKey, @PathParam("id") int id, @QueryParam("path_to_file") String pathToFile, @QueryParam("ref") String ref);
 
 }
